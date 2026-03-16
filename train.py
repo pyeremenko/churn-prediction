@@ -16,14 +16,9 @@ console = Console(width=120)
 DROP_COLS = ["customerID"]
 TARGET = "Churn"
 
-CATEGORICAL_COLS = [
-    "gender", "Partner", "Dependents", "PhoneService", "MultipleLines",
-    "InternetService", "OnlineSecurity", "OnlineBackup", "DeviceProtection",
-    "TechSupport", "StreamingTV", "StreamingMovies", "Contract",
-    "PaperlessBilling", "PaymentMethod",
-]
+CATEGORICAL_COLS = ["gender", "Contract"]
 
-NUMERIC_COLS = ["tenure", "MonthlyCharges", "TotalCharges"]
+NUMERIC_COLS = ["tenure", "MonthlyCharges"]
 
 
 def render_message(title: str, text: str) -> None:
@@ -50,10 +45,7 @@ def load_data(path: str) -> pd.DataFrame:
 
 def preprocess(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series, dict]:
     df = df.copy()
-    df.drop(columns=DROP_COLS, inplace=True)
-
-    # TotalCharges is stored as string; whitespace entries (tenure == 0) become NaN
-    df["TotalCharges"] = pd.to_numeric(df["TotalCharges"], errors="coerce")
+    df = df[CATEGORICAL_COLS + NUMERIC_COLS + [TARGET]]
 
     df.dropna(subset=[TARGET], inplace=True)
 
@@ -221,6 +213,6 @@ def train(data_path: str):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("data", nargs="?", default=None, help="Path to the dataset CSV")
+    parser.add_argument("data", nargs="?", default="data/telco-customer-churn.csv", help="Path to the dataset CSV")
     args = parser.parse_args()
     train(args.data)
