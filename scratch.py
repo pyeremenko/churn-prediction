@@ -4,59 +4,77 @@ from rich.table import Table
 from rich import box
 
 console = Console(width=120)
+
+def render_message(title: str, text: str) -> None:
+    console.rule(f"[bold cyan]{title}")
+    console.print(f"  {text}")
+
+
+def render_table(title: str, columns: list[tuple[str, dict]], rows: list[tuple]) -> None:
+    console.rule(f"[bold cyan]{title}")
+    t = Table(box=box.SIMPLE, show_header=True, header_style="bold magenta")
+    for name, opts in columns:
+        t.add_column(name, **opts)
+    for row in rows:
+        t.add_row(*[str(v) for v in row])
+    console.print(t)
+
+
+def show_shape(df: pd.DataFrame) -> None:
+    render_message("Shape", f"Rows: [bold]{df.shape[0]:,}[/bold]  Columns: [bold]{df.shape[1]}[/bold]")
+
+
+def show_dtypes(df: pd.DataFrame) -> None:
+    render_table(
+        "Column Types",
+        [("Column", {"style": "cyan"}), ("Dtype", {})],
+        list(df.dtypes.items()),
+    )
+
+
+def show_missing(df: pd.DataFrame) -> None:
+    s = df.isnull().sum()
+    missing = s[s > 0]
+    if missing.empty:
+        render_message("Missing Values (isnull)", "[green]No NaN values found.[/green]")
+    else:
+        render_table(
+            "Missing Values (isnull)",
+            [("Column", {"style": "cyan"}), ("NaN Count", {"justify": "right"})],
+            list(missing.items()),
+        )
+
+
+def show_blanks(df: pd.DataFrame) -> None:
+    blanks = {
+        col: int((df[col].str.strip() == "").sum())
+        for col in df.select_dtypes(include="object").columns
+    }
+    blanks = {k: v for k, v in blanks.items() if v > 0}
+    if not blanks:
+        render_message("Blank Strings", "[green]No blank strings found.[/green]")
+    else:
+        render_table(
+            "Blank Strings",
+            [("Column", {"style": "cyan"}), ("Blank Count", {"justify": "right", "style": "yellow"})],
+            list(blanks.items()),
+        )
+
+
+def show_churn(df: pd.DataFrame) -> None:
+    counts = df["Churn"].value_counts()
+    pcts = df["Churn"].value_counts(normalize=True).mul(100).round(1)
+    render_table(
+        "Churn Distribution",
+        [("Churn", {"style": "cyan"}), ("Count", {"justify": "right"}), ("Percent", {"justify": "right"})],
+        [(label, f"{counts[label]:,}", f"{pcts[label]}%") for label in counts.index],
+    )
+
+
 df = pd.read_csv("data/telco-customer-churn.csv")
 
-
-console.rule("[bold cyan]Shape")
-console.print(f"  Rows: [bold]{df.shape[0]:,}[/bold]  Columns: [bold]{df.shape[1]}[/bold]")
-
-
-console.rule("[bold cyan]Column Types")
-t = Table(box=box.SIMPLE, show_header=True, header_style="bold magenta")
-t.add_column("Column", style="cyan")
-t.add_column("Dtype")
-for col, dtype in df.dtypes.items():
-    t.add_row(col, str(dtype))
-console.print(t)
-
-
-console.rule("[bold cyan]Missing Values (isnull)")
-missing = df.isnull().sum()
-if missing.sum() == 0:
-    console.print("  [green]No NaN values found.[/green]")
-else:
-    mt = Table(box=box.SIMPLE, show_header=True, header_style="bold magenta")
-    mt.add_column("Column", style="cyan")
-    mt.add_column("NaN Count", justify="right")
-    for col, n in missing[missing > 0].items():
-        mt.add_row(col, str(n))
-    console.print(mt)
-
-
-console.rule("[bold cyan]Blank Strings")
-blanks = {
-    col: int((df[col].str.strip() == "").sum())
-    for col in df.select_dtypes(include="object").columns
-}
-blanks = {k: v for k, v in blanks.items() if v > 0}
-if not blanks:
-    console.print("  [green]No blank strings found.[/green]")
-else:
-    bt = Table(box=box.SIMPLE, show_header=True, header_style="bold magenta")
-    bt.add_column("Column", style="cyan")
-    bt.add_column("Blank Count", justify="right", style="yellow")
-    for col, n in blanks.items():
-        bt.add_row(col, str(n))
-    console.print(bt)
-
-
-console.rule("[bold cyan]Churn Distribution")
-vc = df["Churn"].value_counts()
-pct = df["Churn"].value_counts(normalize=True).mul(100).round(1)
-ct = Table(box=box.SIMPLE, show_header=True, header_style="bold magenta")
-ct.add_column("Churn", style="cyan")
-ct.add_column("Count", justify="right")
-ct.add_column("Percent", justify="right")
-for label in vc.index:
-    ct.add_row(label, f"{vc[label]:,}", f"{pct[label]}%")
-console.print(ct)
+show_shape(df)
+show_dtypes(df)
+show_missing(df)
+show_blanks(df)
+show_churn(df)

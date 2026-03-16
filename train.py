@@ -25,6 +25,24 @@ CATEGORICAL_COLS = [
 NUMERIC_COLS = ["tenure", "MonthlyCharges", "TotalCharges"]
 
 
+def render_message(title: str, text: str) -> None:
+    console.rule(f"[bold cyan]{title}")
+    console.print(f"  {text}")
+
+def render_table(title: str, columns: list[tuple[str, dict]], rows: list[tuple | None]) -> None:
+    """Rows may contain None as a section separator."""
+    console.rule(f"[bold cyan]{title}")
+    t = Table(box=box.SIMPLE, show_header=True, header_style="bold magenta")
+    for name, opts in columns:
+        t.add_column(name, **opts)
+    for row in rows:
+        if row is None:
+            t.add_section()
+        else:
+            t.add_row(*[str(v) for v in row])
+    console.print(t)
+
+
 def load_data(path: str) -> pd.DataFrame:
     return pd.read_csv(path)
 
@@ -68,6 +86,41 @@ def preprocess(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series, dict]:
     return X, y, artifacts
 
 
+def show_metrics(report: dict, acc: float, f1: float, n_test: int) -> None:
+    cols = [
+        ("Class", {"style": "cyan"}),
+        ("Precision", {"justify": "right"}),
+        ("Recall", {"justify": "right"}),
+        ("F1", {"justify": "right"}),
+        ("Support", {"justify": "right"}),
+    ]
+    rows = [
+        (label, f"{report[label]['precision']:.3f}", f"{report[label]['recall']:.3f}",
+         f"{report[label]['f1-score']:.3f}", str(int(report[label]['support'])))
+        for label in ["No Churn", "Churn"]
+    ]
+    rows += [
+        None,
+        ("[bold]Overall[/bold]", f"[bold]{acc:.3f}[/bold]", "", f"[bold]{f1:.3f}[/bold]", str(n_test)),
+    ]
+    render_table("Metrics", cols, rows)
+
+
+def show_confusion_matrix(cm) -> None:
+    render_table(
+        "Confusion Matrix",
+        [("", {"style": "cyan"}), ("Pred: No Churn", {"justify": "right"}), ("Pred: Churn", {"justify": "right"})],
+        [
+            ("Actual: No Churn", str(cm[0][0]), str(cm[0][1])),
+            ("Actual: Churn",    str(cm[1][0]), str(cm[1][1])),
+        ],
+    )
+
+
+def show_saved(model_path: Path, preprocessors_path: Path) -> None:
+    render_message("Saved", f"Model         [green]{model_path}[/green]\n  Preprocessors [green]{preprocessors_path}[/green]")
+
+
 def train(data_path: str):
     p = Path(data_path)
     model_path = p.with_name(p.stem + "-model.pkl")
@@ -87,43 +140,12 @@ def train(data_path: str):
     report = classification_report(y_test, y_pred, target_names=["No Churn", "Churn"], output_dict=True)
     cm = confusion_matrix(y_test, y_pred)
 
-
-    console.rule("[bold cyan]Metrics")
-    t = Table(box=box.SIMPLE, show_header=True, header_style="bold magenta")
-    t.add_column("Class", style="cyan")
-    t.add_column("Precision", justify="right")
-    t.add_column("Recall", justify="right")
-    t.add_column("F1", justify="right")
-    t.add_column("Support", justify="right")
-    for label in ["No Churn", "Churn"]:
-        r = report[label]
-        t.add_row(label, f"{r['precision']:.3f}", f"{r['recall']:.3f}", f"{r['f1-score']:.3f}", str(int(r['support'])))
-    t.add_section()
-    t.add_row(
-        "[bold]Overall[/bold]",
-        f"[bold]{accuracy_score(y_test, y_pred):.3f}[/bold]",
-        "",
-        f"[bold]{f1_score(y_test, y_pred, average='macro'):.3f}[/bold]",
-        str(len(y_test)),
-    )
-    console.print(t)
-
-
-    console.rule("[bold cyan]Confusion Matrix")
-    cm_table = Table(box=box.SIMPLE, show_header=True, header_style="bold magenta")
-    cm_table.add_column("", style="cyan")
-    cm_table.add_column("Pred: No Churn", justify="right")
-    cm_table.add_column("Pred: Churn", justify="right")
-    cm_table.add_row("Actual: No Churn", str(cm[0][0]), str(cm[0][1]))
-    cm_table.add_row("Actual: Churn", str(cm[1][0]), str(cm[1][1]))
-    console.print(cm_table)
-
+    show_metrics(report, accuracy_score(y_test, y_pred), f1_score(y_test, y_pred, average="macro"), len(y_test))
+    show_confusion_matrix(cm)
 
     joblib.dump(model, model_path)
     joblib.dump(artifacts, preprocessors_path)
-    console.rule("[bold cyan]Saved")
-    console.print(f"  Model         [green]{model_path}[/green]")
-    console.print(f"  Preprocessors [green]{preprocessors_path}[/green]")
+    show_saved(model_path, preprocessors_path)
 
 
 if __name__ == "__main__":
