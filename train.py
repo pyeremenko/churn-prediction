@@ -118,8 +118,8 @@ def show_confusion_matrix(cm) -> None:
     )
 
 
-def show_saved(model_path: Path, preprocessors_path: Path) -> None:
-    render_message("Saved", f"Model         [green]{model_path}[/green]\n  Preprocessors [green]{preprocessors_path}[/green]")
+def show_saved(model_path: Path, preprocessor_path: Path) -> None:
+    render_message("Saved", f"Model         [green]{model_path}[/green]\n  Preprocessors [green]{preprocessor_path}[/green]")
 
 
 def show_comparison(lr_acc: float, rf_acc: float, lr_f1: float, rf_f1: float) -> None:
@@ -136,9 +136,9 @@ def show_comparison(lr_acc: float, rf_acc: float, lr_f1: float, rf_f1: float) ->
     if rf_f1 >= lr_f1:
         winner = "Random Forest"
         reason = (
-            "Random Forest captures non-linear feature interactions (e.g. high monthly charges\n"
-            "  + month-to-month contract) without requiring scaling or manual feature engineering,\n"
-            "  giving it an edge over the linear baseline on this tabular dataset."
+            "On this dataset Random Forest performs better than Logistic Regression. "
+            "This is likely because Random Forest can capture non-linear relationships "
+            "between features and churn probability."
         )
     else:
         winner = "Logistic Regression"
@@ -153,18 +153,7 @@ def show_comparison(lr_acc: float, rf_acc: float, lr_f1: float, rf_f1: float) ->
     )
 
 
-def train(data_path: str):
-    p = Path(data_path)
-    model_path = p.with_name(p.stem + "-model.pkl")
-    preprocessors_path = p.with_name(p.stem + "-preprocessors.pkl")
-
-    df = load_data(data_path)
-    X, y, artifacts = preprocess(df)
-
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42, stratify=y
-    )
-
+def train_baseline(X_train, X_test, y_train, y_test) -> tuple[float, float]:
     render_message("Baseline", "Training Logistic Regression…")
     scaler = StandardScaler()
     X_train_scaled = scaler.fit_transform(X_train)
@@ -172,28 +161,62 @@ def train(data_path: str):
 
     lr = LogisticRegression(max_iter=1000, random_state=42)
     lr.fit(X_train_scaled, y_train)
-    y_pred_lr = lr.predict(X_test_scaled)
-    lr_acc = accuracy_score(y_test, y_pred_lr)
-    lr_f1 = f1_score(y_test, y_pred_lr, average="macro")
-    lr_report = classification_report(y_test, y_pred_lr, target_names=["No Churn", "Churn"], output_dict=True)
-    show_metrics(lr_report, lr_acc, lr_f1, len(y_test))
+    y_pred = lr.predict(X_test_scaled)
 
+    report = classification_report(y_test, y_pred, target_names=["No Churn", "Churn"], output_dict=True)
+    acc = accuracy_score(y_test, y_pred)
+    f1 = f1_score(y_test, y_pred, average="macro")
+    show_metrics(report, acc, f1, len(y_test))
+    return acc, f1
+
+
+def train_random_forest(X_train, X_test, y_train, y_test) -> tuple[float, float, RandomForestClassifier]:
     render_message("Random Forest", "Training RandomForestClassifier…")
     model = RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1)
     model.fit(X_train, y_train)
     y_pred = model.predict(X_test)
-    rf_acc = accuracy_score(y_test, y_pred)
-    rf_f1 = f1_score(y_test, y_pred, average="macro")
-    rf_report = classification_report(y_test, y_pred, target_names=["No Churn", "Churn"], output_dict=True)
+    y_proba = model.predict_proba(X_test)  # shape (n, 2); [:, 1] = churn_probability
+
+    report = classification_report(y_test, y_pred, target_names=["No Churn", "Churn"], output_dict=True)
     cm = confusion_matrix(y_test, y_pred)
-    show_metrics(rf_report, rf_acc, rf_f1, len(y_test))
+    acc = accuracy_score(y_test, y_pred)
+    f1 = f1_score(y_test, y_pred, average="macro")
+    show_metrics(report, acc, f1, len(y_test))
     show_confusion_matrix(cm)
+    render_message(
+        "Probability estimates",
+        f"predict_proba() verified — sample churn probabilities (first 5): "
+        + ", ".join(f"{p:.3f}" for p in y_proba[:5, 1]),
+    )
+    return acc, f1, model
+
+
+def train(data_path: str):
+    model_dir = Path("model")
+    model_dir.mkdir(exist_ok=True)
+    model_path = model_dir / "model.pkl"
+    preprocessor_path = model_dir / "preprocessor.pkl"
+
+    df = load_data(data_path)
+    render_message(
+        "Dataset",
+        f"Rows: [bold]{df.shape[0]:,}[/bold]  Columns: [bold]{df.shape[1]}[/bold]  "
+        f"Churn rate: [bold]{df['Churn'].eq('Yes').mean():.1%}[/bold]",
+    )
+    X, y, artifacts = preprocess(df)
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42, stratify=y
+    )
+
+    lr_acc, lr_f1 = train_baseline(X_train, X_test, y_train, y_test)
+    rf_acc, rf_f1, model = train_random_forest(X_train, X_test, y_train, y_test)
 
     show_comparison(lr_acc, rf_acc, lr_f1, rf_f1)
 
     joblib.dump(model, model_path)
-    joblib.dump(artifacts, preprocessors_path)
-    show_saved(model_path, preprocessors_path)
+    joblib.dump(artifacts, preprocessor_path)
+    show_saved(model_path, preprocessor_path)
 
 
 if __name__ == "__main__":
