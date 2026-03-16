@@ -6,8 +6,9 @@ from rich.console import Console
 from rich.table import Table
 from rich import box
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.metrics import accuracy_score, f1_score, classification_report, confusion_matrix
 
 console = Console(width=120)
@@ -121,6 +122,37 @@ def show_saved(model_path: Path, preprocessors_path: Path) -> None:
     render_message("Saved", f"Model         [green]{model_path}[/green]\n  Preprocessors [green]{preprocessors_path}[/green]")
 
 
+def show_comparison(lr_acc: float, rf_acc: float, lr_f1: float, rf_f1: float) -> None:
+    cols = [
+        ("Model", {"style": "cyan"}),
+        ("Accuracy", {"justify": "right"}),
+        ("Macro F1", {"justify": "right"}),
+    ]
+    rows = [
+        ("Logistic Regression (baseline)", f"{lr_acc:.3f}", f"{lr_f1:.3f}"),
+        ("Random Forest", f"{rf_acc:.3f}", f"{rf_f1:.3f}"),
+    ]
+    render_table("Model Comparison", cols, rows)
+    if rf_f1 >= lr_f1:
+        winner = "Random Forest"
+        reason = (
+            "Random Forest captures non-linear feature interactions (e.g. high monthly charges\n"
+            "  + month-to-month contract) without requiring scaling or manual feature engineering,\n"
+            "  giving it an edge over the linear baseline on this tabular dataset."
+        )
+    else:
+        winner = "Logistic Regression"
+        reason = (
+            "On this dataset the features have largely linear relationships with churn risk,\n"
+            "  so Logistic Regression's simpler decision boundary generalises better.\n"
+            "  Random Forest may be overfitting the training set with default hyperparameters."
+        )
+    console.print(
+        f"\n  [bold]Winner:[/bold] [green]{winner}[/green]\n"
+        f"  [dim]{reason}[/dim]\n"
+    )
+
+
 def train(data_path: str):
     p = Path(data_path)
     model_path = p.with_name(p.stem + "-model.pkl")
@@ -133,15 +165,31 @@ def train(data_path: str):
         X, y, test_size=0.2, random_state=42, stratify=y
     )
 
+    render_message("Baseline", "Training Logistic Regression…")
+    scaler = StandardScaler()
+    X_train_scaled = scaler.fit_transform(X_train)
+    X_test_scaled = scaler.transform(X_test)
+
+    lr = LogisticRegression(max_iter=1000, random_state=42)
+    lr.fit(X_train_scaled, y_train)
+    y_pred_lr = lr.predict(X_test_scaled)
+    lr_acc = accuracy_score(y_test, y_pred_lr)
+    lr_f1 = f1_score(y_test, y_pred_lr, average="macro")
+    lr_report = classification_report(y_test, y_pred_lr, target_names=["No Churn", "Churn"], output_dict=True)
+    show_metrics(lr_report, lr_acc, lr_f1, len(y_test))
+
+    render_message("Random Forest", "Training RandomForestClassifier…")
     model = RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1)
     model.fit(X_train, y_train)
-
     y_pred = model.predict(X_test)
-    report = classification_report(y_test, y_pred, target_names=["No Churn", "Churn"], output_dict=True)
+    rf_acc = accuracy_score(y_test, y_pred)
+    rf_f1 = f1_score(y_test, y_pred, average="macro")
+    rf_report = classification_report(y_test, y_pred, target_names=["No Churn", "Churn"], output_dict=True)
     cm = confusion_matrix(y_test, y_pred)
-
-    show_metrics(report, accuracy_score(y_test, y_pred), f1_score(y_test, y_pred, average="macro"), len(y_test))
+    show_metrics(rf_report, rf_acc, rf_f1, len(y_test))
     show_confusion_matrix(cm)
+
+    show_comparison(lr_acc, rf_acc, lr_f1, rf_f1)
 
     joblib.dump(model, model_path)
     joblib.dump(artifacts, preprocessors_path)
