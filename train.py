@@ -1,5 +1,7 @@
+import argparse
 import joblib
 import pandas as pd
+from pathlib import Path
 from rich.console import Console
 from rich.table import Table
 from rich import box
@@ -9,10 +11,6 @@ from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import accuracy_score, f1_score, classification_report, confusion_matrix
 
 console = Console(width=120)
-
-DATA_PATH = "data/telco-customer-churn.csv"
-MODEL_PATH = "data/model.pkl"
-PREPROCESSORS_PATH = "data/preprocessors.pkl"
 
 DROP_COLS = ["customerID"]
 TARGET = "Churn"
@@ -27,7 +25,7 @@ CATEGORICAL_COLS = [
 NUMERIC_COLS = ["tenure", "MonthlyCharges", "TotalCharges"]
 
 
-def load_data(path: str = DATA_PATH) -> pd.DataFrame:
+def load_data(path: str) -> pd.DataFrame:
     return pd.read_csv(path)
 
 
@@ -70,8 +68,12 @@ def preprocess(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series, dict]:
     return X, y, artifacts
 
 
-def train():
-    df = load_data()
+def train(data_path: str):
+    p = Path(data_path)
+    model_path = p.with_name(p.stem + "-model.pkl")
+    preprocessors_path = p.with_name(p.stem + "-preprocessors.pkl")
+
+    df = load_data(data_path)
     X, y, artifacts = preprocess(df)
 
     X_train, X_test, y_train, y_test = train_test_split(
@@ -117,12 +119,15 @@ def train():
     console.print(cm_table)
 
 
-    joblib.dump(model, MODEL_PATH)
-    joblib.dump(artifacts, PREPROCESSORS_PATH)
+    joblib.dump(model, model_path)
+    joblib.dump(artifacts, preprocessors_path)
     console.rule("[bold cyan]Saved")
-    console.print(f"  Model        [green]{MODEL_PATH}[/green]")
-    console.print(f"  Preprocessors [green]{PREPROCESSORS_PATH}[/green]")
+    console.print(f"  Model         [green]{model_path}[/green]")
+    console.print(f"  Preprocessors [green]{preprocessors_path}[/green]")
 
 
 if __name__ == "__main__":
-    train()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("data", nargs="?", default=None, help="Path to the dataset CSV")
+    args = parser.parse_args()
+    train(args.data)
