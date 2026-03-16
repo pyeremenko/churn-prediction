@@ -1,0 +1,14 @@
+[project]
+name = "churn"
+version = "0.1.0"
+description = "Customer churn prediction API: trains a binary classifier and serves predictions via a REST endpoint."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.135.1",
+    "joblib>=1.5.3",
+    "pandas>=2.3.3",
+    "pydantic>=2.12.5",
+    "scikit-learn>=1.7.2",
+    "uvicorn>=0.42.0",
+]
