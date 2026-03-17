@@ -84,3 +84,40 @@ uvicorn app:app --reload
 ```
 
 `prediction` is `"Yes"` when `churn_probability >= 0.5`.
+
+
+## TODO
+
+The current implementation is a proof of concept. For production, the following improvements should be made:
+
+### Input validation
+
+— The current schema accepts any float for `MonthlyCharges` and any string for `Contract`. Add Pydantic validators with allowed enum values, numeric range checks, and a reject-on-unknown-fields policy to prevent silent GIGO.
+
+### Model versioning
+
+— Tag each saved artifact with a version (e.g. `model_v1.2.pkl`) and store the git SHA + training timestamp inside the pickle as metadata
+
+### Prediction logging
+
+— Persist every request/response pair to a database (Postgres + SQLAlchemy works well): input features, predicted probability, prediction label, model version, and a UUID for later feedback tying. This can help tp detect drift and allow to audit the predictions.
+
+### Monitoring
+
+- *Latency & errors*: expose a `/metrics` endpoint (Prometheus + Grafana) tracking p50/p95/p99 inference latency and 4xx/5xx rates.
+
+### CI/CD
+
+— Add a GitHub Actions pipeline: 
+  - lint 
+  - unit tests
+  - build & push Docker image tagged with the commit hash
+  - deploy to staging
+
+### A/B testing 
+
+— Route a configurable percentage of traffic (via a `X-Model-Version` haeder) to a challenger model. Log the modle version on every prediction record so outcomes can be compared once enough samples accumulate.
+
+### Authentication & rate limiting
+
+— Add an API key authentication and per-key rate limiting.
