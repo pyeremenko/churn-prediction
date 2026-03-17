@@ -3,6 +3,31 @@
 Binary classifier that predicts telecom customer churn, served via a REST API.
 
 
+## Quickstart
+
+It's possible to test the app with Docker:
+
+```bash
+docker run -p 8000:8000 pyeremenko/churn:latest
+```
+
+Then do one of 2 things:
+
+- open `http://localhost:8000/docs` in your browser to see the API documentation.
+- use curl or any HTTP client to make requests to the API:
+
+```bash
+curl -X POST http://localhost:8000/predict \
+    -H "Content-Type: application/json" \
+    -d '{"gender": "Female", "tenure": 12, "MonthlyCharges": 45.3, "Contract": "Month-to-month"}'
+```
+
+The trained model is built into the Docker image, so you don't need to train it yourself.¹
+
+________
+¹ But that's for demonstration purposes - in production you'd want to train it yourself and then build your own Docker image with the model mounted from a volume.
+
+
 ## Setup
 
 Requires Python 3.10+. Install with uv:
