@@ -130,3 +130,10 @@ The current implementation is a proof of concept. For production, the following 
 ### Authentication & rate limiting
 
 — Add an API key authentication and per-key rate limiting.
+
+### ML Improvements
+
+- Try to replace LabelEncoder with one‑hot encoding
+- Bundle all preprocessing (cleaning + encoding) into one thing. Save it, so training and prediction use identical logic and move preprocessing into a single pipeline object saved to disk.
+- Add better evaluation metrics, not just accuracy. Measure how well the model seprates classes (ROC-AUC) and how good it is on imbalanced data (PR-AUC)
+
