@@ -10,6 +10,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.metrics import accuracy_score, f1_score, classification_report, confusion_matrix
+from xgboost import XGBClassifier
 
 console = Console(width=120)
 
@@ -114,7 +115,14 @@ def show_saved(model_path: Path, preprocessor_path: Path) -> None:
     render_message("Saved", f"Model         [green]{model_path}[/green]\n  Preprocessors [green]{preprocessor_path}[/green]")
 
 
-def show_comparison(lr_acc: float, rf_acc: float, lr_f1: float, rf_f1: float) -> None:
+def show_comparison(
+    lr_acc: float,
+    rf_acc: float,
+    xgb_acc: float,
+    lr_f1: float,
+    rf_f1: float,
+    xgb_f1: float,
+) -> None:
     cols = [
         ("Model", {"style": "cyan"}),
         ("Accuracy", {"justify": "right"}),
@@ -123,29 +131,19 @@ def show_comparison(lr_acc: float, rf_acc: float, lr_f1: float, rf_f1: float) ->
     rows = [
         ("Logistic Regression (baseline)", f"{lr_acc:.3f}", f"{lr_f1:.3f}"),
         ("Random Forest", f"{rf_acc:.3f}", f"{rf_f1:.3f}"),
+        ("XGBoost", f"{xgb_acc:.3f}", f"{xgb_f1:.3f}"),
     ]
     render_table("Model Comparison", cols, rows)
-    if rf_f1 >= lr_f1:
-        winner = "Random Forest"
-        reason = (
-            "On this dataset Random Forest performs better than Logistic Regression. "
-            "This is likely because Random Forest can capture non-linear relationships "
-            "between features and churn probability."
-        )
-    else:
-        winner = "Logistic Regression"
-        reason = (
-            "On this dataset the features have largely linear relationships with churn risk,\n"
-            "  so Logistic Regression's simpler decision boundary generalises better.\n"
-            "  Random Forest may be overfitting the training set with default hyperparameters."
-        )
-    console.print(
-        f"\n  [bold]Winner:[/bold] [green]{winner}[/green]\n"
-        f"  [dim]{reason}[/dim]\n"
-    )
+    winners = {
+        "Logistic Regression": lr_f1,
+        "Random Forest": rf_f1,
+        "XGBoost": xgb_f1,
+    }
+    winner = max(winners, key=winners.get)
+    console.print(f"\n  [bold]Winner (by macro F1):[/bold] [green]{winner}[/green]\n")
 
 
-def train_baseline(X_train, X_test, y_train, y_test) -> tuple[float, float]:
+def train_baseline(X_train, X_test, y_train, y_test) -> tuple[float, float, LogisticRegression, StandardScaler]:
     render_message("Baseline", "Training Logistic Regression…")
     scaler = StandardScaler()
     X_train_scaled = scaler.fit_transform(X_train)
@@ -159,7 +157,7 @@ def train_baseline(X_train, X_test, y_train, y_test) -> tuple[float, float]:
     acc = accuracy_score(y_test, y_pred)
     f1 = f1_score(y_test, y_pred, average="macro")
     show_metrics(report, acc, f1, len(y_test))
-    return acc, f1
+    return acc, f1, lr, scaler
 
 
 def train_random_forest(X_train, X_test, y_train, y_test) -> tuple[float, float, RandomForestClassifier]:
@@ -175,6 +173,35 @@ def train_random_forest(X_train, X_test, y_train, y_test) -> tuple[float, float,
     f1 = f1_score(y_test, y_pred, average="macro")
     show_metrics(report, acc, f1, len(y_test))
     show_confusion_matrix(cm)
+    render_message(
+        "Probability estimates",
+        f"predict_proba() verified — sample churn probabilities (first 5): "
+        + ", ".join(f"{p:.3f}" for p in y_proba[:5, 1]),
+    )
+    return acc, f1, model
+
+
+def train_xgboost(X_train, X_test, y_train, y_test) -> tuple[float, float, XGBClassifier]:
+    render_message("XGBoost", "Training XGBoost…")
+    model = XGBClassifier(
+        n_estimators=300,
+        max_depth=4,
+        learning_rate=0.05,
+        subsample=0.9,
+        colsample_bytree=0.9,
+        objective="binary:logistic",
+        eval_metric="logloss",
+        random_state=42,
+        n_jobs=-1,
+    )
+    model.fit(X_train, y_train)
+    y_pred = model.predict(X_test)
+    y_proba = model.predict_proba(X_test)
+
+    report = classification_report(y_test, y_pred, target_names=["No Churn", "Churn"], output_dict=True)
+    acc = accuracy_score(y_test, y_pred)
+    f1 = f1_score(y_test, y_pred, average="macro")
+    show_metrics(report, acc, f1, len(y_test))
     render_message(
         "Probability estimates",
         f"predict_proba() verified — sample churn probabilities (first 5): "
@@ -201,12 +228,24 @@ def train(data_path: str):
         X, y, test_size=0.2, random_state=42, stratify=y
     )
 
-    lr_acc, lr_f1 = train_baseline(X_train, X_test, y_train, y_test)
+    lr_acc, lr_f1, lr_model, lr_scaler = train_baseline(X_train, X_test, y_train, y_test)
     rf_acc, rf_f1, model = train_random_forest(X_train, X_test, y_train, y_test)
+    xgb_acc, xgb_f1, xgb_model = train_xgboost(X_train, X_test, y_train, y_test)
 
-    show_comparison(lr_acc, rf_acc, lr_f1, rf_f1)
+    show_comparison(lr_acc, rf_acc, xgb_acc, lr_f1, rf_f1, xgb_f1)
 
-    joblib.dump(model, model_path)
+    candidates = {
+        "logistic_regression": {"model": lr_model, "f1": lr_f1, "scaler": lr_scaler},
+        "random_forest": {"model": model, "f1": rf_f1, "scaler": None},
+        "xgboost": {"model": xgb_model, "f1": xgb_f1, "scaler": None},
+    }
+    winner_name = max(candidates, key=lambda k: candidates[k]["f1"])
+    winner = candidates[winner_name]
+
+    artifacts["model_name"] = winner_name
+    artifacts["scaler"] = winner["scaler"]
+
+    joblib.dump(winner["model"], model_path)
     joblib.dump(artifacts, preprocessor_path)
     show_saved(model_path, preprocessor_path)
 

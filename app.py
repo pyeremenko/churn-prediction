@@ -43,6 +43,7 @@ def _transform(request: PredictionRequest) -> pd.DataFrame:
     preprocessor = _state["preprocessor"]
     label_encoders: dict = preprocessor["label_encoders"]
     feature_columns: list = preprocessor["feature_columns"]
+    scaler = preprocessor.get("scaler")
 
     row = request.model_dump()
 
@@ -55,7 +56,10 @@ def _transform(request: PredictionRequest) -> pd.DataFrame:
             )
         row[feature_name] = int(encoder.transform([value])[0])
 
-    return pd.DataFrame([row])[feature_columns]
+    features = pd.DataFrame([row])[feature_columns]
+    if scaler is not None:
+        features = pd.DataFrame(scaler.transform(features), columns=feature_columns)
+    return features
 
 
 @app.get("/health", summary="Health check")
