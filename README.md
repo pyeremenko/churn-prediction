@@ -2,6 +2,14 @@
 
 Binary classifier that predicts telecom customer churn, served via a REST API.
 
+Training:
+
+<img width="1491" height="1385" alt="image" src="https://github.com/user-attachments/assets/474cd23b-3d92-43e4-b8f9-697f9664584a" />
+
+
+Running:
+
+<img width="1987" height="714" alt="image" src="https://github.com/user-attachments/assets/2703c857-3aac-499b-9d82-1f5534cecbc4" />
 
 ## Quickstart
 
@@ -24,7 +32,8 @@ curl -X POST http://localhost:8000/predict \
 
 The trained model is built into the Docker image, so you don't need to train it yourself.¹
 
-________
+__
+
 ¹ But that's for demonstration purposes - in production you'd want to train it yourself and then build your own Docker image with the model mounted from a volume.
 
 
