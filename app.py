@@ -58,9 +58,24 @@ def _transform(request: PredictionRequest) -> pd.DataFrame:
     return pd.DataFrame([row])[feature_columns]
 
 
+@app.get("/health", summary="Health check")
+def health() -> dict:
+    return {"status": "healthy"}
+
+
 @app.post("/predict", response_model=PredictionResponse, summary="Predict customer churn")
 def predict(request: PredictionRequest) -> PredictionResponse:
-    features = _transform(request)
-    churn_probability = _state["model"].predict_proba(features)[0, 1]
+    try:
+        features = _transform(request)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"Preprocessing failed: {e}") from e
+
+    try:
+        churn_probability = _state["model"].predict_proba(features)[0, 1]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Prediction failed: {e}") from e
+
     label = "Yes" if churn_probability >= 0.5 else "No"
     return PredictionResponse(churn_probability=round(float(churn_probability), 4), prediction=label)
