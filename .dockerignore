@@ -1,0 +1,8 @@
+.git
+.venv
+data/
+scratch.py
+__pycache__
+*.pyc
+*.pyo
+.python-version
